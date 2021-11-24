@@ -1,25 +1,32 @@
-const directions = {
-	TOP: 0,
-	LEFT: 1,
-	BOTTOM: 2,
-	RIGHT: 3,
-};
-
 function timeout(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Convert from degrees to radians.
+const getRadians = function (degrees) {
+	return (degrees * Math.PI) / 180;
+};
+
+// Convert from radians to degrees.
+const getDegrees = function (radians) {
+	return (radians * 180) / Math.PI;
+};
+
 class MazeRenderer {
 	static wallColor = "#111111";
 	static pathColor = "#f1f1f1";
+	static finishColor = "#1111aa";
 
 	static resolvePixelColor(inp) {
 		let res;
 
 		switch (inp) {
-			case 0:
-			case 2: {
+			case 0: {
 				res = MazeRenderer.pathColor;
+				break;
+			}
+			case 2: {
+				res = MazeRenderer.finishColor;
 				break;
 			}
 			case 1: {
@@ -33,6 +40,8 @@ class MazeRenderer {
 
 	static render(renderer, maze) {
 		const { pixelSize, renderOffset } = renderer;
+
+		//renderer.ctx.rotate(Solver.rotation);
 
 		maze.forEach((row, rowIndex) => {
 			row.forEach((colVal, colIndex) => {
@@ -54,136 +63,92 @@ class SolverRenderer {
 
 	static drawSolver(renderer, x, y) {
 		const { pixelSize } = renderer;
+		const scalar = 5;
+
+		renderer.ctx.translate(x, y);
+		renderer.ctx.rotate((Solver.rotation * Math.PI) / 180);
+		renderer.ctx.translate(-x, -y);
 
 		renderer.ctx.beginPath();
-
-		console.log(Solver.direction);
-
-		switch (Solver.direction) {
-			case directions.TOP: {
-				renderer.ctx.moveTo(x + pixelSize / 2, y);
-				renderer.ctx.lineTo(x + pixelSize, y + pixelSize);
-				renderer.ctx.lineTo(x, y + pixelSize);
-				break;
-			}
-			case directions.LEFT: {
-				renderer.ctx.moveTo(x + pixelSize, y);
-				renderer.ctx.lineTo(x, y + pixelSize / 2);
-				renderer.ctx.lineTo(x + pixelSize, y + pixelSize);
-				break;
-			}
-			case directions.BOTTOM: {
-				renderer.ctx.moveTo(x, y);
-				renderer.ctx.lineTo(x + pixelSize / 2, y + pixelSize);
-				renderer.ctx.lineTo(x + pixelSize, y);
-				break;
-			}
-			case directions.RIGHT: {
-				renderer.ctx.moveTo(x, y);
-				renderer.ctx.lineTo(x + pixelSize, y + pixelSize / 2);
-				renderer.ctx.lineTo(x, y + pixelSize);
-				break;
-			}
-		}
-
+		renderer.ctx.moveTo(x, y - pixelSize / scalar);
+		renderer.ctx.lineTo(x - pixelSize / scalar, y + pixelSize / scalar);
+		renderer.ctx.lineTo(x + pixelSize / scalar, y + pixelSize / scalar);
 		renderer.ctx.fill();
+
+		//console.log(renderer.ctx.getTransform());
+
+		renderer.ctx.setTransform(1, 0, 0, 1, 0, 0);
 	}
 
 	static render(renderer, sceneMap) {
 		const { pixelSize, renderOffset } = renderer;
-		let flag = false;
 
-		sceneMap.forEach((row, rowIndex) => {
-			const inx = row.findIndex((val) => val === 2);
+		renderer.ctx.fillStyle = this.solverColor;
 
-			if (inx !== -1) {
-				renderer.ctx.fillStyle = this.solverColor;
-
-				SolverRenderer.drawSolver(
-					renderer,
-					renderOffset + (inx + 1) * pixelSize,
-					renderOffset + (rowIndex + 1) * pixelSize
-				);
-			}
-		});
+		SolverRenderer.drawSolver(
+			renderer,
+			Solver.position[0] * pixelSize,
+			Solver.position[1] * pixelSize
+		);
 	}
 }
 
 class Solver {
-	static direction = directions.TOP;
+	static rotation = 0;
+	static position = [];
 
-	static getPosition() {
-		let position = -1;
+	static setStartPosition() {
+		Solver.position = [12, 12];
+	}
 
-		Scene.sceneMap.forEach((row, rowIndex) => {
-			const inx = row.findIndex((col) => col === 2);
+	static calcNextPosition() {
+		const [x, y] = Solver.position;
 
-			if (inx !== -1) position = [rowIndex, inx];
-		});
+		const cx = Math.sin((Solver.rotation * Math.PI) / 180) * 0.01;
+		const cy = Math.cos((Solver.rotation * Math.PI) / 180) * 0.01;
 
-		return position;
+		return [x + cx, y - cy];
 	}
 
 	static go() {
-		const [x, y] = Solver.getPosition();
-
-		Scene.sceneMap[x][y] = 0;
-
-		switch (Solver.direction) {
-			case directions.TOP: {
-				Scene.sceneMap[x - 1][y] = 2;
-				break;
-			}
-			case directions.LEFT: {
-				Scene.sceneMap[x][y - 1] = 2;
-				break;
-			}
-			case directions.BOTTOM: {
-				Scene.sceneMap[x + 1][y] = 2;
-				break;
-			}
-			case directions.RIGHT: {
-				Scene.sceneMap[x][y + 1] = 2;
-				break;
-			}
-		}
-
-		console.log(Scene.sceneMap);
+		Solver.position = Solver.calcNextPosition();
 	}
 
-	static rotateLeft90() {
-		let nextDirection = Solver.direction + 1;
-
-		if (nextDirection > 3) nextDirection = 4 % nextDirection;
-
-		Solver.direction = nextDirection;
+	static rotateLeft(degree) {
+		Solver.rotation -= degree;
 	}
 
 	static checkIfWall() {
-		const [x, y] = Solver.getPosition();
-		let mapPixel;
+		const [x, y] = Solver.calcNextPosition();
 		let res = false;
 
-		switch (Solver.direction) {
-			case directions.TOP: {
-				mapPixel = Scene.sceneMap[x - 1][y];
-				break;
-			}
-			case directions.LEFT: {
-				mapPixel = Scene.sceneMap[x][y - 1];
-				break;
-			}
-			case directions.BOTTOM: {
-				mapPixel = Scene.sceneMap[x + 1][y];
-				break;
-			}
-			case directions.RIGHT: {
-				mapPixel = Scene.sceneMap[x][y + 1];
-				break;
-			}
-		}
+		if (Scene.sceneMap[Math.floor(y) - 1][Math.floor(x) - 1] == 1)
+			res = true;
 
-		if (mapPixel === 1) res = true;
+		return res;
+	}
+
+	static getAzymuthAngle() {
+		const [x, y] = Solver.position;
+		const finishPosition = [1, 0];
+
+		const angle = Math.atan2(y - finishPosition[0], x - finishPosition[1]);
+
+		return getDegrees(angle);
+	}
+
+	static rotateToAzymuth() {
+		console.log("rotateToAzymuth", Solver.getAzymuthAngle());
+		Solver.rotation = 0;
+		Solver.rotateLeft(Solver.getAzymuthAngle());
+	}
+
+	static isFinish() {
+		const [x, y] = Solver.position;
+		let res = false;
+
+		if (Scene.sceneMap[Math.floor(y) - 1][Math.floor(x) - 1] == 2)
+			res = true;
 
 		return res;
 	}
@@ -191,16 +156,20 @@ class Solver {
 
 class Scene {
 	static sceneMap = [
-		[1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-		[1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1],
-		[1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1],
-		[1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1],
-		[1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1],
-		[1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1],
-		[1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1],
-		[1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1],
-		[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1],
-		[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		[1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		[1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+		[1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1],
+		[0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1],
+		[0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1],
+		[1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1],
+		[1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1],
+		[1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+		[1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1],
+		[1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1],
+		[1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1],
+		[1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+		[1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1],
+		[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 	];
 
 	static render(renderer) {
@@ -212,7 +181,7 @@ class Scene {
 class CanvasRenderer {
 	static renderOffset = 0;
 	static pixelSize = 40;
-	static frameLength = 300;
+	static frameLength = 1;
 
 	static windowResizeHandler() {
 		CanvasRenderer.c.width = window.innerWidth;
@@ -224,6 +193,8 @@ class CanvasRenderer {
 		CanvasRenderer.ctx = CanvasRenderer.c.getContext("2d");
 
 		CanvasRenderer.windowResizeHandler();
+
+		Solver.setStartPosition();
 	}
 
 	static rerenderScene() {
@@ -237,34 +208,57 @@ class CanvasRenderer {
 		Scene.render(CanvasRenderer);
 	}
 
-	static async renderLoop() {
+	static async renderAction(action) {
 		CanvasRenderer.rerenderScene();
-		Solver.rotateLeft90();
+		action();
 		await timeout(CanvasRenderer.frameLength);
-
-		if (Solver.checkIfWall()) {
-			CanvasRenderer.rerenderScene();
-			Solver.rotateLeft90();
-			await timeout(CanvasRenderer.frameLength);
-
-			CanvasRenderer.rerenderScene();
-			Solver.rotateLeft90();
-			await timeout(CanvasRenderer.frameLength);
-		} else {
-			CanvasRenderer.rerenderScene();
-			Solver.go();
-			await timeout(CanvasRenderer.frameLength);
-		}
-
-		CanvasRenderer.renderLoop();
 	}
 
-	static execute(el) {
+	static async renderLoop() {
+		await CanvasRenderer.renderAction(Solver.rotateToAzymuth);
+
+		while (!Solver.isFinish()) {
+			if (Solver.checkIfWall()) {
+				await CanvasRenderer.renderAction(Solver.rotateToAzymuth);
+
+				let i = 0;
+				do {
+					await CanvasRenderer.renderAction(() =>
+						Solver.rotateLeft(30)
+					);
+					i += 30;
+				} while (Solver.checkIfWall() && i < 150);
+
+				await CanvasRenderer.renderAction(Solver.rotateToAzymuth);
+
+				let j = 0;
+				do {
+					await CanvasRenderer.renderAction(() =>
+						Solver.rotateLeft(330)
+					);
+					j += 30;
+				} while (Solver.checkIfWall() && j <= 180);
+
+				await CanvasRenderer.renderAction(Solver.rotateToAzymuth);
+
+				if (j <= i)
+					await CanvasRenderer.renderAction(() => {
+						Solver.rotateLeft(360 - j);
+					});
+				else
+					await CanvasRenderer.renderAction(() =>
+						Solver.rotateLeft(i)
+					);
+			} else {
+				await CanvasRenderer.renderAction(Solver.go);
+			}
+		}
+	}
+
+	static async execute(el) {
 		CanvasRenderer.init();
 
-		//CanvasRenderer.renderLoop(el);
-		//CanvasRenderer.renderLoop(el);
-		//setInterval(() => CanvasRenderer.renderLoop(el), 1000);
+		//CanvasRenderer.renderLoop();
 		CanvasRenderer.renderLoop();
 	}
 }
